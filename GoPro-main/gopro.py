@@ -19,12 +19,14 @@ def get_frames(number):
         #Append the image to frame array.
         frame_array.append(frame)
 
+    cap.release()
+
     #Return number of frames asked for
     return frame_array[-number:]
 
-frame_array = get_frames(160)
+frame_array = get_frames(80)
 
 plt.axis("off")
-plt.imshow(cv2.cvtColor(frame_array[10], cv2.COLOR_BGR2RGB))
+plt.imshow(cv2.cvtColor(frame_array[0], cv2.COLOR_BGR2RGB))
 plt.show()
 
