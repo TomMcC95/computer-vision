@@ -3,14 +3,14 @@ from time import time
 import socket
 from goprocam import GoProCamera, constants
 
-WRITE = False
+WRITE = True
 gpCam = GoProCamera.GoPro()
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 t=time()
 gpCam.livestream("start")
 gpCam.video_settings(res='1080p', fps='30')
 gpCam.gpControlSet(constants.Stream.WINDOW_SIZE, constants.Stream.WindowSize.R720)
-cap = cv2.VideoCapture("udp://10.5.5.9:8554", cv2.CAP_FFMPEG)
+cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
 counter = 0
 while True:
     nmat, frame = cap.read()
