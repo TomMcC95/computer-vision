@@ -2,10 +2,11 @@ import matplotlib.pyplot as plt
 import cv2
 import time
 
-def get_frames(number):
+#Initialize video capture
+cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
 
-    #Initialize video capture
-    cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+
+def get_frames(cap, number):
 
     frame_array = []
     t = time.time()
@@ -15,16 +16,18 @@ def get_frames(number):
 
         #Capture the current frame.
         ret, frame = cap.read()
+        print(ret)
 
         #Append the image to frame array.
         frame_array.append(frame)
 
-    cap.release()
-
     #Return number of frames asked for
     return frame_array[-number:]
 
-frame_array = get_frames(80)
+
+frame_array = get_frames(cap,80)
+
+cap.release()
 
 plt.axis("off")
 plt.imshow(cv2.cvtColor(frame_array[0], cv2.COLOR_BGR2RGB))
