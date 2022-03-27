@@ -4,7 +4,6 @@ import pandas as pd # Pandas handles csv and excel export.
 import numpy as np # Numpy handles data manipulation.
 import datetime # Allows date of processing to be recorded.
 from tqdm import tqdm # Tqdm handles progress bar.
-# import matplotlib.pyplot as plt
 from src.Basler import BaslerCamera
 import os
 import platform
