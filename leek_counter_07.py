@@ -19,7 +19,7 @@ cwd = os.path.dirname(__file__)
 input_directory_name = "input" 
 output_directory_name = "output"
 results_file_name = 'widths_record'
-video_name = "Test.mp4"
+video_name = "GX010040.mp4"
 num_acquisitions = 1
 video_filepath = rf'{cwd}\{input_directory_name}\{video_name}' # Filepath of video to analyse.
 image_save_directory = rf'{cwd}\{output_directory_name}' # Filepath to images of detected leeks.
@@ -36,15 +36,20 @@ height_of_camera = 319
 horizontal_fov = 0
 vertical_fov = 0
 diagonal_fov = 0
+
+# These should be some sort of equation formed using the 4 variables above.
 video_true_h_mm = 310
 video_true_w_mm = 507
 
 
 # Note: Region of Interest (ROI) is now mandatory since most videos show substantial perspective distortion.
 video_resolution = [1920,1080]
-ROI_points = np.array([[0,0],[0,1000],[1900,0],[1900,1000]])
-ROI_true_h_mm = 310 # True height of shot.
-ROI_true_w_mm = 507 # True width of shot.
+ROI_resolution = [1900,1000]
+ROI_points = np.array([[0,0], [0,ROI_resolution[1]], [ROI_resolution[0],0], [ROI_resolution[0],ROI_resolution[1]]])
+w_ratio = ROI_resolution[0]/video_resolution[0]
+h_ratio = ROI_resolution[1]/video_resolution[1]
+ROI_true_h_mm = video_true_h_mm * h_ratio # True height of shot.
+ROI_true_w_mm = video_true_w_mm * w_ratio # True width of shot.
 
 # Note: With x being the horizontal axis and 0 being on top. 
 measure_from_end_px = 300 # Distance, in pixels, of diameter measurement from the white end.
@@ -52,8 +57,8 @@ toggle_output_greyscale = True # Toggle if greyscale signal should be saved alon
 toggle_vertical_travel = False # Toggle if the leeks are travelling vertically. (Horizontal by default)
 
 # Start and end positions of the video (expressed as fraction of total length)
-video_start_fraction = 60/100 
-video_end_fraction = 90/100
+video_start_fraction = 0/100 
+video_end_fraction = 100/100
 
 # Fine-tuning variables
 noise_reduction_kernel_size = 10
