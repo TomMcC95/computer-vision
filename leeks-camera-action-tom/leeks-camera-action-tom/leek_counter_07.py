@@ -6,43 +6,57 @@ import datetime # Allows date of processing to be recorded.
 from tqdm import tqdm # Tqdm handles progress bar.
 # import matplotlib.pyplot as plt
 from src.Basler import BaslerCamera
-import os
-import platform
 
 # Leek Counter 06- Piotr Geca: piotr.geca@npl.co.uk
 # Leek Counter 07 - Imran Mohamed: imran.mohamed@npl.co.uk & Tom McClelland tom.mcclelland@allpressfarms.co.uk
 
 
+# --- Instructions ---
+# Running the script in live display mode:
+# Pressing 'q' button quits the display and script early (data won't be saved)
+# Pressing 'p' button pauses the script on current frame. Press again to resume.
+
 # File variables
-# CHANGE AS REQUIRED
-cwd = os.path.dirname(__file__)
 input_directory_name = "input" 
 output_directory_name = "output"
 results_file_name = 'widths_record'
-video_name = "Test.mp4"
-num_acquisitions = 1
-video_filepath = rf'{cwd}\{input_directory_name}\{video_name}' # Filepath of video to analyse.
-image_save_directory = rf'{cwd}\{output_directory_name}' # Filepath to images of detected leeks.
 
+
+# CHANGE AS REQUIRED
+
+user = "Tom"
+camera = "gopro"
+computer = "factory"
+video_name = "GX010040.mp4"
+num_acquisitions = 1
+
+
+if user == "Tom":
+    d = "\\"
+    if computer.lower() == 'factory':
+        cwd = f"C:{d}leek-camera-action"
+    else:
+        cwd = f"C:{d}Users{d}Farm Office{d}Documents{d}Tom Python Folder{d}leeks-camera-action"
+
+if user == "Imran":
+    d = ""
+    cwd = ""
+
+# video_filepath = r'C:\\Users\\Farm Office\\Documents\\Tom Python Folder\\leeks-camera-action\\input\\GX010040.mp4' # Filepath of video to analyse.
+video_filepath = r'C:\Users\Farm Office\Documents\Tom Python Folder\leeks-camera-action\input\GX010040.mp4' # Filepath of video to analyse.
+image_save_directory = r'C:\Users\Farm Office\Documents\Tom Python Folder\leeks-camera-action\output' # Filepath to images of detected leeks.
+# video_filepath = cwd + d + input_directory_name + d + video_name # Filepath of video to analyse.
+# image_save_directory = cwd + d + output_directory_name # Filepath to images of detected leeks.
 
 # Script toggles
 toggle_live_display = True # Toggle if the script should run with real-time display function. Slows down execution.
 toggle_progress_bar = True # Toggle progress bar function. Requires tqdm package
 toggle_background_subtractor = True # Toggle a more expensive background subtraction process.
 
-# To obtain good perspective correction, user needs to supply the true dimensions of ROI.
-# IMRAN PLEASE MODIFY THESE TO PROVIDE ACCURATE CALIBRATION.
-height_of_camera = 319
-horizontal_fov = 0
-vertical_fov = 0
-diagonal_fov = 0
-video_true_h_mm = 310
-video_true_w_mm = 507
-
-
 # Note: Region of Interest (ROI) is now mandatory since most videos show substantial perspective distortion.
-video_resolution = [1920,1080]
 ROI_points = np.array([[0,0],[0,1000],[1900,0],[1900,1000]])
+
+# To obtain good perspective correction, user needs to supply the true dimensions of ROI.
 ROI_true_h_mm = 310 # True height of shot.
 ROI_true_w_mm = 507 # True width of shot.
 
@@ -52,7 +66,7 @@ toggle_output_greyscale = True # Toggle if greyscale signal should be saved alon
 toggle_vertical_travel = False # Toggle if the leeks are travelling vertically. (Horizontal by default)
 
 # Start and end positions of the video (expressed as fraction of total length)
-video_start_fraction = 60/100 
+video_start_fraction = 50/100 
 video_end_fraction = 90/100
 
 # Fine-tuning variables
@@ -88,122 +102,24 @@ loose = 50
 over = 60
 
 
-# --- Helper Functions ---
-
-
-# Find when a file (video) was created.
-def creation_date(path_to_file):
-    if platform.system() == 'Windows':
-        return os.path.getctime(path_to_file)
-    else:
-        stat = os.stat(path_to_file)
-        try:
-            return stat.st_birthtime
-        except AttributeError:
-            return stat.st_mtime
-# Average red channel values from top and bottom half of the leek image and flip white-side-down. Note opencv convention is BGR.
-def flip_green_up(img):
-    img_masked = np.ma.masked_equal(img, 0)
-    red_mean_up = img_masked[img.shape[0]//5:,:,2].mean()
-    red_mean_down = img_masked[:img.shape[0]//5,:,2].mean()
-    if red_mean_up < red_mean_down:
-        img = cv.rotate(img, cv.ROTATE_180)
-    return img
-
-# Remove black margins from image.
-def crop_to_content(img):
-    any_rows = np.any(img[:,:,0], axis=1)
-    any_columns = np.any(img[:,:,0], axis=0)
-    img_cropped = img[np.ix_(any_rows,any_columns)]
-    return img_cropped
-
-# Pastes captured image of detected leek in center of 'Leek Peek' window.
-def paste_in_center(dst, src):
-    y_mid = dst.shape[0] // 2
-    x_mid = dst.shape[1] // 2
-    h = src.shape[0]
-    w = src.shape[1]
-    dst[y_mid-int(h/2):y_mid-int(h/2)+h ,x_mid-int(w/2):x_mid-int(w/2)+w] = src
-    return dst
-
-# Makes sure 4 ROI co-ordinates are in the correct order,
-# such that the first entry in the list is the top-left,
-# the second entry is the top-right, the third is the
-# bottom-right, and the fourth is the bottom-left
-def order_points(pts):
-    rect = np.zeros((4, 2), dtype = "float32")
-    # the top-left point will have the smallest sum, whereas
-    # the bottom-right point will have the largest sum
-    s = pts.sum(axis = 1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-    # now, compute the difference between the points, the
-    # top-right point will have the smallest difference,
-    # whereas the bottom-left will have the largest difference
-    diff = np.diff(pts, axis = 1)
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
-    # return the ordered coordinates
-    return rect
-
-def get_transform_params(pts, true_h, true_w):
-    # obtain a consistent order of the points and unpack them.
-    pts = order_points(pts)
-    (tl, tr, br, bl) = pts
-    h_w_ratio = true_h / true_w
-    # compute the width of the new image, which will be the
-    # maximum distance between bottom-right and bottom-left
-    # x-coordiates or the top-right and top-left x-coordinates
-    widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
-    widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
-    maxWidth = max(int(widthA), int(widthB))
-    # Height will be calculated based on the user-supplied ROI dimensions
-    maxHeight = int(maxWidth * h_w_ratio)
-    # now that we have the dimensions of the new image, construct
-    # the set of destination points to obtain a "birds eye view",
-    # (i.e. top-down view) of the image, again specifying points
-    # in the top-left, top-right, bottom-right, and bottom-left
-    # order
-    dst = np.array([[0, 0], [maxWidth - 1, 0], [maxWidth - 1, maxHeight - 1], [0, maxHeight - 1]], dtype = "float32")
-    # compute the perspective transform matrix and then apply it
-    M = cv.getPerspectiveTransform(pts, dst)
-    # return the warped image
-    return (M, (maxWidth, maxHeight))
-
-# Gets factor to calculate diameter from number of pixels.
-def get_px_to_mm_factor(transform_params, true_width):
-    _, w_h = transform_params
-    w_px, _ = w_h
-    px_to_mm_factor = true_width / w_px
-    return px_to_mm_factor
-
-
-# --- End of Helper Functions ---
-
-
 # --- Code Starts Here ---
 
-# --- Instructions ---
-# Running the script in live display mode:
-# Pressing 'q' button quits the display and script early (data won't be saved)
-# Pressing 'p' button pauses the script on current frame. Press again to resume.
-
-# Try connecting to Basler.
+# Connect to Basler
 
 try:
     camera = BaslerCamera()
-    video_name = 'basler_temp.mp4'
-    video_filepath = rf'{video_name}'
+    video_filepath = 'Test_video_phonelight.mp4'
     camera_connected = True
 except:
-    print('Basler not connected.')
+    print('No camera connected')
     camera_connected = False
     num_acquisitions = 1
 # finally:
 
-
 # Prepare OpenCV background subtractors.
 backSub = cv.createBackgroundSubtractorMOG2(history = 750, varThreshold = 20, detectShadows = True)
+
+
 
 
 for num_ciclo in range(num_acquisitions):
@@ -246,11 +162,92 @@ for num_ciclo in range(num_acquisitions):
     leek_area = 0
     leek_width_record = np.empty((0),dtype=np.uint16)
     leek_area_record = np.empty((0), dtype=np.uint16)
+    leek_signal_record = np.empty((0, signal_width), dtype=np.uint8)
     leek_datetime_record = np.empty((0), dtype='M')
-    video_name_record = np.empty((0), dtype='S')
+    video_filepath_record = np.empty((0), dtype='S')
 
 
+    # --- Helper Functions ---
 
+
+    # Average red channel values from top and bottom half of the leek image and flip white-side-down. Note opencv convention is BGR.
+    def flip_green_up(img):
+        img_masked = np.ma.masked_equal(img, 0)
+        red_mean_up = img_masked[img.shape[0]//5:,:,2].mean()
+        red_mean_down = img_masked[:img.shape[0]//5,:,2].mean()
+        if red_mean_up < red_mean_down:
+            img = cv.rotate(img, cv.ROTATE_180)
+        return img
+
+    # Remove black margins from image.
+    def crop_to_content(img):
+        any_rows = np.any(img[:,:,0], axis=1)
+        any_columns = np.any(img[:,:,0], axis=0)
+        img_cropped = img[np.ix_(any_rows,any_columns)]
+        return img_cropped
+
+    # Pastes captured image of detected leek in center of 'Leek Peek' window.
+    def paste_in_center(dst, src):
+        y_mid = dst.shape[0] // 2
+        x_mid = dst.shape[1] // 2
+        h = src.shape[0]
+        w = src.shape[1]
+        dst[y_mid-int(h/2):y_mid-int(h/2)+h ,x_mid-int(w/2):x_mid-int(w/2)+w] = src
+        return dst
+
+    # Makes sure 4 ROI co-ordinates are in the correct order,
+    # such that the first entry in the list is the top-left,
+    # the second entry is the top-right, the third is the
+    # bottom-right, and the fourth is the bottom-left
+    def order_points(pts):
+        rect = np.zeros((4, 2), dtype = "float32")
+        # the top-left point will have the smallest sum, whereas
+        # the bottom-right point will have the largest sum
+        s = pts.sum(axis = 1)
+        rect[0] = pts[np.argmin(s)]
+        rect[2] = pts[np.argmax(s)]
+        # now, compute the difference between the points, the
+        # top-right point will have the smallest difference,
+        # whereas the bottom-left will have the largest difference
+        diff = np.diff(pts, axis = 1)
+        rect[1] = pts[np.argmin(diff)]
+        rect[3] = pts[np.argmax(diff)]
+        # return the ordered coordinates
+        return rect
+
+    def get_transform_params(pts, true_h, true_w):
+        # obtain a consistent order of the points and unpack them.
+        pts = order_points(pts)
+        (tl, tr, br, bl) = pts
+        h_w_ratio = true_h / true_w
+        # compute the width of the new image, which will be the
+        # maximum distance between bottom-right and bottom-left
+        # x-coordiates or the top-right and top-left x-coordinates
+        widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+        widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+        maxWidth = max(int(widthA), int(widthB))
+        # Height will be calculated based on the user-supplied ROI dimensions
+        maxHeight = int(maxWidth * h_w_ratio)
+        # now that we have the dimensions of the new image, construct
+        # the set of destination points to obtain a "birds eye view",
+        # (i.e. top-down view) of the image, again specifying points
+        # in the top-left, top-right, bottom-right, and bottom-left
+        # order
+        dst = np.array([[0, 0], [maxWidth - 1, 0], [maxWidth - 1, maxHeight - 1], [0, maxHeight - 1]], dtype = "float32")
+        # compute the perspective transform matrix and then apply it
+        M = cv.getPerspectiveTransform(pts, dst)
+        # return the warped image
+        return (M, (maxWidth, maxHeight))
+
+    # Gets factor to calculate diameter from number of pixels.
+    def get_px_to_mm_factor(transform_params, true_width):
+        _, w_h = transform_params
+        w_px, _ = w_h
+        px_to_mm_factor = true_width / w_px
+        return px_to_mm_factor
+
+
+    # --- End of Helper Functions ---
 
 
     # --- Back to Code ---
@@ -278,8 +275,8 @@ for num_ciclo in range(num_acquisitions):
 
     # If progress bars are turned on, set up progress bars
     if toggle_progress_bar:
-        pbar = tqdm(desc = "Processed Frames", total=frames_total * video_end_fraction - frames_total * video_start_fraction, unit = ' Frames')
-        pbar2 = tqdm(desc = "Detected Leeks", unit = ' Leeks')
+        pbar = tqdm(desc = "Processed frames:", total=frames_total * video_end_fraction - frames_total * video_start_fraction, unit = 'Frames')
+        pbar2 = tqdm(desc = "Detected Leeks:", unit = 'Leeks')
 
     framecounter = 0
 
@@ -429,11 +426,12 @@ for num_ciclo in range(num_acquisitions):
                 cv.imwrite(f'{image_save_directory}\image{int((time.time() - start_time)*1000)}.png', leek_result)
                 leek_width_record = np.append(leek_width_record, leek_width)
                 leek_area_record = np.append(leek_area_record, leek_area)
-                video_name_record = np.append(video_name_record, video_name)
+                video_filepath_record = np.append(video_filepath_record, video_filepath)
                 leek_datetime_record = np.append(leek_datetime_record, datetime.datetime.now())
                 measurement_row = np.pad(measurement_row, (int((signal_width - measurement_row.size)/2),0))
                 measurement_row = np.pad(measurement_row, (0,signal_width - measurement_row.size))
                 measurement_row = measurement_row[np.newaxis,:]
+                leek_signal_record = np.vstack((leek_signal_record, measurement_row))
 
         # Compose a picture made of all images in leek_result_list
         frames_since_detection += 1
@@ -495,16 +493,16 @@ for num_ciclo in range(num_acquisitions):
             pbar2.n = leek_width_record.size
             pbar2.update(0)
 
+    print(f'Seconds to process the video: {time.time() - start_time}')
 
-    df = pd.DataFrame(columns=['datetime', 'video_name','width_px', 'area_px'])
+    df = pd.DataFrame(columns=['datetime', 'video_filepath','width_px', 'area_px'])
     df['datetime'] = pd.Series(leek_datetime_record)
-    df['video_name'] = pd.Series(video_name_record)
+    df['video_filepath'] = pd.Series(video_filepath_record)
     df['width_px'] = pd.Series(leek_width_record)
     df['area_px'] = pd.Series(leek_area_record)
     df['width_mm'] = np.round((df['width_px'] * px_to_mm_factor), decimals=2)
-    df.to_excel(rf'{cwd}\{output_directory_name}\{results_file_name}.xlsx', index = False)
+    df.to_excel(results_file_name + ".xlsx", index = False)
+    np.savetxt(results_file_name + "_signal.csv", leek_signal_record, delimiter=",")
 
     capture.release()
     cv.destroyAllWindows()
-
-    print(f'\n{int(time.time() - start_time)} seconds to process the video.')
