@@ -1,5 +1,5 @@
 import time # Allows for benchmarking and fps.
-import cv2 as cv # Core computer vision library.
+import cv2 as cv
 import pandas as pd # Pandas handles csv and excel export.
 import numpy as np # Numpy handles data manipulation.
 import datetime # Allows date of processing to be recorded.
@@ -7,6 +7,9 @@ from tqdm import tqdm # Tqdm handles progress bar.
 from src.Basler import BaslerCamera
 import os
 import platform
+import seaborn as sns
+import matplotlib.pyplot as plt
+import math
 
 # Leek Counter 06- Piotr Geca: piotr.geca@npl.co.uk
 # Leek Counter 07 - Imran Mohamed: imran.mohamed@npl.co.uk & Tom McClelland tom.mcclelland@allpressfarms.co.uk
@@ -18,9 +21,10 @@ cwd = os.path.dirname(__file__)
 input_directory_name = "input" 
 output_directory_name = "output"
 results_file_name = 'widths_record'
-video_name = "GX010040.mp4"
+video_name = "GX010059.mp4"
 num_acquisitions = 1
 video_filepath = rf'{cwd}\{input_directory_name}\{video_name}' # Filepath of video to analyse.
+belt_join = cv.imread(rf'{cwd}\{input_directory_name}\belt_join.png')
 image_save_directory = rf'{cwd}\{output_directory_name}' # Filepath to images of detected leeks.
 
 
@@ -31,15 +35,15 @@ toggle_background_subtractor = True # Toggle a more expensive background subtrac
 
 # To obtain good perspective correction, user needs to supply the true dimensions of ROI.
 # IMRAN PLEASE MODIFY THESE TO PROVIDE ACCURATE CALIBRATION.
-height_of_camera = 319
-horizontal_fov = 0
-vertical_fov = 0
-diagonal_fov = 0
+height_of_camera = 300
+w_fov = 92.9
+h_fov = 61.2
+width_fov = math.radians(w_fov/2)
+height_fov = math.radians(h_fov/2)
 
 # These should be some sort of equation formed using the 4 variables above.
-video_true_h_mm = 310
-video_true_w_mm = 507
-
+video_true_h_mm = 2 * height_of_camera * math.tan(height_fov)
+video_true_w_mm = 2 * height_of_camera * math.tan(width_fov)
 
 # Note: Region of Interest (ROI) is now mandatory since most videos show substantial perspective distortion.
 video_resolution = [1920,1080]
@@ -53,10 +57,9 @@ ROI_true_w_mm = video_true_w_mm * w_ratio # True width of shot.
 # Note: With x being the horizontal axis and 0 being on top. 
 measure_from_end_px = 300 # Distance, in pixels, of diameter measurement from the white end.
 toggle_output_greyscale = True # Toggle if greyscale signal should be saved alongside auto-thresholded widths
-toggle_vertical_travel = False # Toggle if the leeks are travelling vertically. (Horizontal by default)
 
 # Start and end positions of the video (expressed as fraction of total length)
-video_start_fraction = 0/100 
+video_start_fraction = 40/100 
 video_end_fraction = 100/100
 
 # Fine-tuning variables
@@ -77,7 +80,7 @@ maximum_aspect_ratio = 30
 # THIS ALSO DISAPPEARS WHEN I CHANGE THE RESOLUTION TO 1920X1080 INSTEAD OF 1900X1000
 
 detection_window_position = 0.5 # 0.5 corresponds to half the frame size. When centerpoint of the detected region passes through, it will be collected
-detection_window_width = 100 # smaller window deals better with crowding but depending on framerate can miss some detections. For leek to be picked up and measured, only one box centerpoint (see demo window output) can be present inside the window.
+detection_window_width = 120 # smaller window deals better with crowding but depending on framerate can miss some detections. For leek to be picked up and measured, only one box centerpoint (see demo window output) can be present inside the window.
 
 # Maximum & minimum leek detection sizes
 minimum_detectable = 5
@@ -95,16 +98,48 @@ over = 60
 # --- Helper Functions ---
 
 
+# Check if image is of belt join or not.
+def belt_join_check(image_2, image_1 = belt_join):
+
+    image_1 = cv.cvtColor(image_1, cv.COLOR_BGR2HSV)
+    image_2 = cv.cvtColor(image_2, cv.COLOR_BGR2HSV)
+
+    h_bins = 50
+    s_bins = 60
+    histSize = [h_bins, s_bins]
+
+    # hue varies from 0 to 179, saturation from 0 to 255
+    h_ranges = [0, 180]
+    s_ranges = [0, 256]
+    ranges = h_ranges + s_ranges # concat lists
+
+    # Use the 0-th and 1-st channels
+    channels = [0, 2]
+    hist_image_1 = cv.calcHist([image_1], channels, None, histSize, ranges, accumulate=False)
+    cv.normalize(hist_image_1, hist_image_1, alpha=0, beta=1, norm_type=cv.NORM_MINMAX)
+    hist_image_2 = cv.calcHist([image_2], channels, None, histSize, ranges, accumulate=False)
+    cv.normalize(hist_image_2, hist_image_2, alpha=0, beta=1, norm_type=cv.NORM_MINMAX)
+
+    one_two = cv.compareHist(hist_image_1, hist_image_2, 1)
+
+    if one_two < 200:
+        return False
+    else:
+        return True
+
 # Find when a file (video) was created.
 def creation_date(path_to_file):
     if platform.system() == 'Windows':
-        return os.path.getctime(path_to_file)
+        t_stamp = int(os.path.getctime(path_to_file))
+        c_date = datetime.datetime.fromtimestamp(t_stamp)
+        return c_date
     else:
         stat = os.stat(path_to_file)
         try:
             return stat.st_birthtime
         except AttributeError:
             return stat.st_mtime
+
 # Average red channel values from top and bottom half of the leek image and flip white-side-down. Note opencv convention is BGR.
 def flip_green_up(img):
     img_masked = np.ma.masked_equal(img, 0)
@@ -203,8 +238,6 @@ except:
     print('Basler not connected.')
     camera_connected = False
     num_acquisitions = 1
-# finally:
-
 
 # Prepare OpenCV background subtractors.
 backSub = cv.createBackgroundSubtractorMOG2(history = 750, varThreshold = 20, detectShadows = True)
@@ -216,6 +249,10 @@ for num_ciclo in range(num_acquisitions):
         print('Starting video')
         camera.get_stream_asMP4(750, video_filepath)
         print('MP4 video acquired and saved')
+
+    # Get creation date of video and leek_id to use for records.
+    c_date = creation_date(video_filepath)
+    leek_id = 0
 
     # Set capture video.
     capture = cv.VideoCapture(str(video_filepath))
@@ -250,14 +287,9 @@ for num_ciclo in range(num_acquisitions):
     leek_area = 0
     leek_width_record = np.empty((0),dtype=np.uint16)
     leek_area_record = np.empty((0), dtype=np.uint16)
+    leek_id_record = np.empty((0), dtype=np.uint16)
     leek_datetime_record = np.empty((0), dtype='M')
     video_name_record = np.empty((0), dtype='S')
-
-
-
-
-
-    # --- Back to Code ---
 
 
     transform_params = get_transform_params(ROI_points, ROI_true_h_mm, ROI_true_w_mm)
@@ -267,12 +299,9 @@ for num_ciclo in range(num_acquisitions):
     edge_contact_check = (0,0 ,w_h[0], w_h[1]) # This list will be used later to check if bounding boxes touch edges of the frame
     mask = np.ones((w_h[1], w_h[0]), dtype=np.uint8)
     leek_mask = np.ones((w_h[1], w_h[0]), dtype=np.uint8)
-    if toggle_vertical_travel:
-        detection_window = [w_h[1]*detection_window_position - detection_window_width,  w_h[1]*detection_window_position + detection_window_width]
-        detection_window = np.floor(detection_window).astype(np.uint16)
-    else:
-        detection_window = [w_h[0]*detection_window_position - detection_window_width,  w_h[0]*detection_window_position + detection_window_width]
-        detection_window = np.floor(detection_window).astype(np.uint16)
+
+    detection_window = [w_h[0]*detection_window_position - detection_window_width,  w_h[0]*detection_window_position + detection_window_width]
+    detection_window = np.floor(detection_window).astype(np.uint16)
 
     # Set output (Must be same dimensions as the frames being written to it)
     fourcc = cv.VideoWriter_fourcc(*'XVID') # MJPEG, XVID
@@ -360,12 +389,8 @@ for num_ciclo in range(num_acquisitions):
                 center, dims, angle = box
 
                 # Unless the detected region's center is in the detection window, skip it 
-                if toggle_vertical_travel:
-                    if (center[1] < detection_window[0] or center[1] > detection_window[1]): 
-                        continue
-                else:
-                    if (center[0] < detection_window[0] or center[0] > detection_window[1]): 
-                        continue
+                if (center[0] < detection_window[0] or center[0] > detection_window[1]): 
+                    continue
 
                 # Wipe the temporary array clean
                 leek_temp[...] = 0
@@ -392,7 +417,7 @@ for num_ciclo in range(num_acquisitions):
                 leek_tight = flip_green_up(leek_tight)
 
                 # These lists are used to read and record width of leek at 3 different points, with an average taken forward.
-                measurement_height_list = [int(leek_tight.shape[0]*0.15), int(leek_tight.shape[0]*0.30), int(leek_tight.shape[0]*0.45)]
+                measurement_height_list = [int(leek_tight.shape[0]*n) for n in [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]]
                 leek_width_list = []
 
                 # Draw line where measurement is taken
@@ -404,6 +429,8 @@ for num_ciclo in range(num_acquisitions):
                     leek_tight[-height:-height+2,edge_left:edge_right] = [0,0,255]
 
                 leek_area = np.count_nonzero(leek_tight[:,:,2])
+                leek_width_list.remove(max(leek_width_list))
+                leek_width_list.remove(min(leek_width_list))
                 leek_width = np.average(leek_width_list)
                 
                 # Signal that in the last frame there was a detection in detection zone
@@ -428,16 +455,19 @@ for num_ciclo in range(num_acquisitions):
         # If this is the last time leek was detected in zone:
         if frames_since_detection == 1:
             if minimum_detectable < (leek_width * px_to_mm_factor) < maximum_detectable:
-                leek_result[...] = 0
-                leek_result = paste_in_center(leek_result, leek_tight)
-                cv.imwrite(f'{image_save_directory}\image{int((time.time() - start_time)*1000)}.png', leek_result)
-                leek_width_record = np.append(leek_width_record, leek_width)
-                leek_area_record = np.append(leek_area_record, leek_area)
-                video_name_record = np.append(video_name_record, video_name)
-                leek_datetime_record = np.append(leek_datetime_record, datetime.datetime.now())
-                measurement_row = np.pad(measurement_row, (int((signal_width - measurement_row.size)/2),0))
-                measurement_row = np.pad(measurement_row, (0,signal_width - measurement_row.size))
-                measurement_row = measurement_row[np.newaxis,:]
+                if belt_join_check(leek_tight):
+                    leek_result[...] = 0
+                    leek_result = paste_in_center(leek_result, leek_tight)
+                    cv.imwrite(f'{image_save_directory}\leek {leek_id}.png', leek_result)
+                    leek_width_record = np.append(leek_width_record, leek_width)
+                    leek_area_record = np.append(leek_area_record, leek_area)
+                    video_name_record = np.append(video_name_record, video_name)
+                    leek_datetime_record = np.append(leek_datetime_record, c_date)
+                    leek_id_record = np.append(leek_id_record, leek_id)
+                    measurement_row = np.pad(measurement_row, (int((signal_width - measurement_row.size)/2),0))
+                    measurement_row = np.pad(measurement_row, (0,signal_width - measurement_row.size))
+                    measurement_row = measurement_row[np.newaxis,:]
+                    leek_id += 1
 
         # Compose a picture made of all images in leek_result_list
         frames_since_detection += 1
@@ -449,7 +479,7 @@ for num_ciclo in range(num_acquisitions):
 
         # Windows to display vids
         cv.namedWindow('Leek Peek',cv.WINDOW_NORMAL)
-        cv.resizeWindow('Leek Peek',int(900/leek_peek_ratio),900)
+        cv.resizeWindow('Leek Peek',int(900/leek_peek_ratio),600)
         cv.namedWindow('Clean Mask',cv.WINDOW_NORMAL)
         cv.resizeWindow('Clean Mask',framewidth,frameheight)
         cv.namedWindow('Demo',cv.WINDOW_NORMAL)
@@ -460,12 +490,8 @@ for num_ciclo in range(num_acquisitions):
             frame_demo = frame
 
             # Draw detection window bars
-            if toggle_vertical_travel:
-                frame_demo[detection_window[0],:,:] = [0,0,255]
-                frame_demo[detection_window[1],:,:] = [0,0,255]
-            else:
-                frame_demo[:,detection_window[0],:] = [0,0,255]
-                frame_demo[:,detection_window[1],:] = [0,0,255]
+            frame_demo[:,detection_window[0],:] = [0,0,255]
+            frame_demo[:,detection_window[1],:] = [0,0,255]
 
             # Draw smallest boxes and their centers around detected leeks
             for idx in range(len(boxes)):
@@ -476,11 +502,9 @@ for num_ciclo in range(num_acquisitions):
                 cv.drawContours(frame_demo,[box_contours],0,(0,0,255),2)
                 cv.circle(frame_demo, center, 5, (0,0,255), 2)
 
-            # Annotate with measurement
-                cv.putText(leek_result, "Width(px):" + str(leek_width),
-                (0,20), cv.FONT_HERSHEY_DUPLEX, 0.4 , (0,0,255))
-                cv.putText(leek_result, "Area(px):" + str(leek_area),
-                (0,40), cv.FONT_HERSHEY_DUPLEX, 0.4 , (0,0,255))
+                # Annotate with measurement
+                cv.putText(leek_result, f"Width(px): {leek_width}", (0,150), cv.FONT_HERSHEY_DUPLEX, 1.5 , (0,0,255), 5)
+                cv.putText(leek_result, f"Width(mm): {leek_width * px_to_mm_factor:.2f}", (0,60), cv.FONT_HERSHEY_DUPLEX, 1.5 , (0,0,255), 5)
 
             # If statement causes the image to only be refreshed on the last frame object is in the detection zone
             cv.imshow('Leek Peek', leek_result)
@@ -498,17 +522,24 @@ for num_ciclo in range(num_acquisitions):
             pbar.update(1)
             pbar2.n = leek_width_record.size
             pbar2.update(0)
-
-
-    df = pd.DataFrame(columns=['datetime', 'video_name','width_px', 'area_px'])
-    df['datetime'] = pd.Series(leek_datetime_record)
-    df['video_name'] = pd.Series(video_name_record)
-    df['width_px'] = pd.Series(leek_width_record)
-    df['area_px'] = pd.Series(leek_area_record)
-    df['width_mm'] = np.round((df['width_px'] * px_to_mm_factor), decimals=2)
-    df.to_excel(rf'{cwd}\{output_directory_name}\{results_file_name}.xlsx', index = False)
-
+        
     capture.release()
     cv.destroyAllWindows()
 
-    print(f'\n{int(time.time() - start_time)} seconds to process the video.')
+print(f'\n{int(time.time() - start_time)} seconds to process the video.')
+
+df = pd.DataFrame(columns=['datetime', 'video_name','width_px', 'area_px'])
+df['leek_id'] = pd.Series(leek_id_record)
+df['datetime'] = pd.Series(leek_datetime_record)
+df['video_name'] = pd.Series(video_name_record)
+df['width_px'] = pd.Series(leek_width_record)
+df['area_px'] = pd.Series(leek_area_record)
+df['width_mm'] = np.round((df['width_px'] * px_to_mm_factor), decimals=2)
+df.to_excel(rf'{cwd}\{output_directory_name}\{video_name.split(".")[0]}.xlsx', index = False)
+
+bins = [i*5 for i in range(14)]
+fig = sns.histplot(data = df, x = 'width_mm', bins=bins, stat='probability')
+plt.xlabel('Diameter of Leek (mm)')
+plt.ylabel('Percentage of Sample')
+plt.title(f'Size Distribution in {video_name.split(".")[0]} taken at {c_date}\n')
+plt.savefig(fr'{output_directory_name}\{video_name.split(".")[0]}.png', dpi = 200)
