@@ -21,7 +21,7 @@ cwd = os.path.dirname(__file__)
 input_directory_name = "input" 
 output_directory_name = "output"
 results_file_name = 'widths_record'
-video_name = "GX010059.mp4"
+video_name = "GX010064.mp4"
 num_acquisitions = 1
 video_filepath = rf'{cwd}\{input_directory_name}\{video_name}' # Filepath of video to analyse.
 belt_join = cv.imread(rf'{cwd}\{input_directory_name}\belt_join.png')
@@ -47,7 +47,7 @@ video_true_w_mm = 2 * height_of_camera * math.tan(width_fov)
 
 # Note: Region of Interest (ROI) is now mandatory since most videos show substantial perspective distortion.
 video_resolution = [1920,1080]
-ROI_resolution = [1900,1000]
+ROI_resolution = [1900,1080]
 ROI_points = np.array([[0,0], [0,ROI_resolution[1]], [ROI_resolution[0],0], [ROI_resolution[0],ROI_resolution[1]]])
 w_ratio = ROI_resolution[0]/video_resolution[0]
 h_ratio = ROI_resolution[1]/video_resolution[1]
@@ -122,7 +122,7 @@ def belt_join_check(image_2, image_1 = belt_join):
 
     one_two = cv.compareHist(hist_image_1, hist_image_2, 1)
 
-    if one_two < 200:
+    if one_two < 300:
         return False
     else:
         return True
