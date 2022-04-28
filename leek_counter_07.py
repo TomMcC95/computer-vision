@@ -59,8 +59,8 @@ measure_from_end_px = 300 # Distance, in pixels, of diameter measurement from th
 toggle_output_greyscale = True # Toggle if greyscale signal should be saved alongside auto-thresholded widths
 
 # Start and end positions of the video (expressed as fraction of total length)
-video_start_fraction = 40/100 
-video_end_fraction = 100/100
+video_start_fraction = 40.45/100 
+video_end_fraction = 42.65/100
 
 # Fine-tuning variables
 noise_reduction_kernel_size = 10
@@ -72,15 +72,15 @@ signal_channel_no = 2
 signal_width = 600 # padded width of collected greyscale scan values. Must be significantly larger than largest leek.
 minimum_leek_area_px = 50000 # Minimum area (in pixels^2) for the detection to be counted
 maximum_leek_area_px = 800000 # Maximum area (in pixels^2) for the detection to be counted
-minimum_aspect_ratio = 3 # Miniumum aspect ratio for detection to be measured (rejects overlapping regions and other non-leek-shaped objects)
-maximum_aspect_ratio = 30
+minimum_aspect_ratio = 1.5 # Miniumum aspect ratio for detection to be measured (rejects overlapping regions and other non-leek-shaped objects)
+maximum_aspect_ratio = 15
 
 
 # WHY CAN'T WE MOVE DETECTION WINDOW POSITION WITHOUT IT DISAPPEARING.
 # THIS ALSO DISAPPEARS WHEN I CHANGE THE RESOLUTION TO 1920X1080 INSTEAD OF 1900X1000
 
 detection_window_position = 0.5 # 0.5 corresponds to half the frame size. When centerpoint of the detected region passes through, it will be collected
-detection_window_width = 120 # smaller window deals better with crowding but depending on framerate can miss some detections. For leek to be picked up and measured, only one box centerpoint (see demo window output) can be present inside the window.
+detection_window_width = 100 # smaller window deals better with crowding but depending on framerate can miss some detections. For leek to be picked up and measured, only one box centerpoint (see demo window output) can be present inside the window.
 
 # Maximum & minimum leek detection sizes
 minimum_detectable = 5
@@ -122,7 +122,7 @@ def belt_join_check(image_2, image_1 = belt_join):
 
     one_two = cv.compareHist(hist_image_1, hist_image_2, 1)
 
-    if one_two < 300:
+    if one_two < 200:
         return False
     else:
         return True
