@@ -21,7 +21,7 @@ cwd = os.path.dirname(__file__)
 input_directory_name = "input" 
 output_directory_name = "output"
 results_file_name = 'widths_record'
-video_name = "GX010064.mp4"
+video_name = "GX010057.mp4"
 num_acquisitions = 1
 video_filepath = rf'{cwd}\{input_directory_name}\{video_name}' # Filepath of video to analyse.
 belt_join = cv.imread(rf'{cwd}\{input_directory_name}\belt_join.png')
@@ -59,8 +59,8 @@ measure_from_end_px = 300 # Distance, in pixels, of diameter measurement from th
 toggle_output_greyscale = True # Toggle if greyscale signal should be saved alongside auto-thresholded widths
 
 # Start and end positions of the video (expressed as fraction of total length)
-video_start_fraction = 40.45/100 
-video_end_fraction = 42.65/100
+video_start_fraction = 0/100 
+video_end_fraction = 100/100
 
 # Fine-tuning variables
 noise_reduction_kernel_size = 10
